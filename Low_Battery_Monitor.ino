@@ -1,4 +1,7 @@
+#include <Arduino.h>
 #include <U8g2lib.h>
+#include <avr/sleep.h>
+
 #ifdef U8X8_HAVE_HW_SPI
 #include <SPI.h>
 #endif
@@ -6,47 +9,68 @@
 #include <Wire.h>
 #endif
 U8G2_SSD1306_128X32_UNIVISION_1_SW_I2C u8g2(U8G2_R0, /* clock=*/ SCL, /* data=*/ SDA, /* reset=*/ U8X8_PIN_NONE);   // Adafruit Feather ESP8266/32u4 Boards + FeatherWing OLED
+
 // OLED
 int sda = A4;
 int scl = A5;
 
+// Low Power Monitor
 int piezo = 6;
+int low_power_warnings; // When this count gets to 5, trigger the alarm
 
 void setup() {
   // put your setup code here, to run once:
   pinMode(piezo, OUTPUT);
   pinMode(13, OUTPUT);
-
   Serial.begin(9600);
   u8g2.begin();
 }
 
 void loop() {
-  long vcc = 0;
-  char val[5];
-    
   // put your main code here, to run repeatedly:
   delay(1000);
   digitalWrite(13, HIGH);
   delay(1000);
   digitalWrite(13, LOW);
+  checkPower();
+}
+
+void checkPower() {
+  long vcc = 0;
+  // Implement a count to ignore false alarms
+  
   vcc = readVcc();
+  displayPower(vcc);
+
+  // Increment count when we have a low reading
+  if (vcc < 3400)
+    low_power_warnings++;
+  else if (low_power_warnings > 0)
+    low_power_warnings--;
+
+  // Only when the count reaches 5 should the alarm be raised
+  if (low_power_warnings >= 5 )
+    soundAlarm();
+}
+
+void displayPower(long vcc) {
+  char val[5];
+
   Serial.println(vcc);
   u8g2.firstPage();
   do {
     u8g2.setFont(u8g2_font_ncenB14_tr);
     u8g2.setDrawColor(1);
     u8g2.setCursor(0, 16);
-    sprintf(val, "%04d", vcc);
+    sprintf(val, "%04dmV", vcc);
     u8g2.print(val);
   } while ( u8g2.nextPage() );
-      
-  if (vcc < 3400) {
-    soundAlarm();
-  }
 }
 
 void soundAlarm() {
+  // blank the screen to save power 
+  //u8g2.setPowerSave(1);
+
   for (int i = 0; i < 10 ; i++) {
     tone(piezo, 400, 300);
   }
